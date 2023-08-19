@@ -1,0 +1,9 @@
+{
+    "db": {
+        "user": "read_user",
+        "host": "localhost",
+        "database": "db1",
+        "password": "P@ssw0rd",
+        "port": 5432
+    }
+}
