@@ -5,5 +5,12 @@
         "database": "db1",
         "password": "P@ssw0rd",
         "port": 5432
-    }
+    },
+    "BigQuery": {
+        "projectId": "hoge",
+        "datasetId": "fuga",
+        "tableId": "piyo"
+    },
+    "replication_slot": "slt",
+    "GCP_KEY": "./config/credential.json"
 }
