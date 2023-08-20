@@ -20,6 +20,7 @@
     "@google-cloud/bigquery": "^7.2.0",
     "@google-cloud/bigquery-storage": "^4.1.0",
     "node-config-ts": "^2.3.1",
-    "pg": "^8.11.3"
+    "pg": "^8.11.3",
+    "pg-query-stream": "^4.5.3"
   }
 }

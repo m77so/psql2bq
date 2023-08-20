@@ -10,9 +10,16 @@ import { StreamConnection } from '@google-cloud/bigquery-storage/build/src/manag
 type JSONPrimitive = string | number | boolean | null
 type JSONValue = JSONPrimitive | JSONObject | JSONArray
 type JSONObject = { [member: string]: JSONValue }
+type PgJSONPrimitive = string | number | boolean | Date | null
+type PgJSONValue = PgJSONPrimitive | PgJSONObject | PgJSONArray
+type PgJSONObject = { [member: string]: PgJSONValue}
+type PgJSONArray = Array<PgJSONValue>
 type JSONArray = Array<JSONValue>
 type StreamType = typeof managedwriter.DefaultStream | typeof managedwriter.CommittedStream
-export class BQWriter<T extends JSONObject> {
+type TableMetadataObject = { name: string, type: string, mode?: string, description?: string}
+
+
+export class BQWriter {
     offsetValue: number
     projectId: string
     datasetId: string
@@ -21,6 +28,7 @@ export class BQWriter<T extends JSONObject> {
     writeClient: managedwriter.WriterClient | null
     streamType : StreamType
     isCdc : boolean
+    schema : TableMetadataObject[]
     constructor(
         projectId: string,
         datasetId: string,
@@ -39,6 +47,7 @@ export class BQWriter<T extends JSONObject> {
         if (isCdc) {
             this.streamType = managedwriter.DefaultStream
         }
+        this.schema = []
     }
 
     async init() {
@@ -51,11 +60,13 @@ export class BQWriter<T extends JSONObject> {
             const table = await dataset.table(this.tableId)
             const [metadata] = await table.getMetadata()
             const { schema } = metadata
+
             if (this.isCdc) {
                 schema.fields.push(
-                    { name: '_CHANGE_TYPE', type: 'STRING' }
+                    { name: '_CHANGE_TYPE', type: 'STRING', mode: 'NULLABLE' }
                 )
             }
+            this.schema = schema.fields
             const storageSchema = adapt.convertBigQuerySchemaToStorageTableSchema(schema)
             const protoDescriptor = adapt.convertStorageSchemaToProto2Descriptor(
                 storageSchema, 'root'
@@ -90,9 +101,50 @@ export class BQWriter<T extends JSONObject> {
         }
     }
 
-    async appendRows(rows: T[]) {
+// pgのresponseを取り込める形式に変換する
+    fixPgRows(rows: PgJSONObject[]): JSONObject[] {
+        const fixTimestamp = (value: PgJSONValue): JSONValue => {
+            if (value instanceof Date) {
+                return (value as Date).getTime() * 1000
+            } else if ( typeof value === "number") {
+                return value as number
+            } else {
+                return null
+            }
+        }
+        const jsonFixedRows:  JSONObject[] = rows.map(row=>{
+            let res: JSONObject = {}
+            this.schema.forEach(s => {
+                const k = s.name
+                if (s.type === 'JSON') {
+                    res[k] = (s.mode === "REPEATED" && Array.isArray(row[k]))  ? 
+                    (row[k] as PgJSONObject[]).map(e => JSON.stringify(e)) : JSON.stringify(row[k])
+                }
+                else if (s.type === 'TIMESTAMP') {
+                    if (s.mode === "REPEATED" && Array.isArray(row[k])) {
+                        res[k] = (row[k] as any[]).map(e => fixTimestamp(e))
+                    } else {
+                        res[k] = fixTimestamp(row[k])
+                    }
+                }
+                else {
+                    res[k] = row[k] as JSONValue
+                }
+            })
+
+            return res
+        })
+        return jsonFixedRows
+    }
+
+    appendRow(row: JSONObject) {
+        
+    }
+
+    async appendRows(rows: JSONObject[]) {
         const pendingWrites: PendingWrite[] = []
         if (this.writer === null) throw Error('writer is null')
+       
         let pw = this.writer.appendRows(rows, this.offsetValue)
         pendingWrites.push(pw)
         const results = await Promise.all(
@@ -106,4 +158,3 @@ export class BQWriter<T extends JSONObject> {
     }
 
 }
-
