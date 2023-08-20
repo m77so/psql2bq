@@ -26,7 +26,7 @@ export class BQWriter<T extends JSONObject> {
         datasetId: string,
         tableId: string,
         streamType: StreamType = managedwriter.CommittedStream,
-        isCdc: boolean
+        isCdc: boolean = false
     ) {
         this.offsetValue = 0
         this.projectId = projectId
@@ -106,3 +106,4 @@ export class BQWriter<T extends JSONObject> {
     }
 
 }
+
