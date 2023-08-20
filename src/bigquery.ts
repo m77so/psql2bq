@@ -20,11 +20,13 @@ export class BQWriter<T extends JSONObject> {
     writer : managedwriter.JSONWriter | null
     writeClient: managedwriter.WriterClient | null
     streamType : StreamType
+    isCdc : boolean
     constructor(
         projectId: string,
         datasetId: string,
         tableId: string,
-        streamType: StreamType = managedwriter.CommittedStream
+        streamType: StreamType = managedwriter.CommittedStream,
+        isCdc: boolean
     ) {
         this.offsetValue = 0
         this.projectId = projectId
@@ -33,6 +35,10 @@ export class BQWriter<T extends JSONObject> {
         this.writeClient = null
         this.writer = null
         this.streamType = streamType
+        this.isCdc = isCdc
+        if (isCdc) {
+            this.streamType = managedwriter.DefaultStream
+        }
     }
 
     async init() {
@@ -45,6 +51,11 @@ export class BQWriter<T extends JSONObject> {
             const table = await dataset.table(this.tableId)
             const [metadata] = await table.getMetadata()
             const { schema } = metadata
+            if (this.isCdc) {
+                schema.fields.push(
+                    { name: '_CHANGE_TYPE', type: 'STRING' }
+                )
+            }
             const storageSchema = adapt.convertBigQuerySchemaToStorageTableSchema(schema)
             const protoDescriptor = adapt.convertStorageSchemaToProto2Descriptor(
                 storageSchema, 'root'
