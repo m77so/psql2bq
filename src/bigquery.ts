@@ -4,13 +4,14 @@ import { config } from 'node-config-ts'
 
 import { BigQuery } from '@google-cloud/bigquery'
 import { PendingWrite } from '@google-cloud/bigquery-storage/build/src/managedwriter/pending_write'
+import { StreamConnection } from '@google-cloud/bigquery-storage/build/src/managedwriter/stream_connection'
 
 // https://github.com/googleapis/nodejs-bigquery-storage/blob/18670627cbebf57c139036a7a949ace599606eb0/src/managedwriter/json_writer.ts#L26C1-L30C35
 type JSONPrimitive = string | number | boolean | null
 type JSONValue = JSONPrimitive | JSONObject | JSONArray
 type JSONObject = { [member: string]: JSONValue }
 type JSONArray = Array<JSONValue>
-
+type StreamType = typeof managedwriter.DefaultStream | typeof managedwriter.CommittedStream
 export class BQWriter<T extends JSONObject> {
     offsetValue: number
     projectId: string
@@ -18,10 +19,12 @@ export class BQWriter<T extends JSONObject> {
     tableId: string
     writer : managedwriter.JSONWriter | null
     writeClient: managedwriter.WriterClient | null
+    streamType : StreamType
     constructor(
         projectId: string,
         datasetId: string,
-        tableId: string
+        tableId: string,
+        streamType: StreamType = managedwriter.CommittedStream
     ) {
         this.offsetValue = 0
         this.projectId = projectId
@@ -29,11 +32,11 @@ export class BQWriter<T extends JSONObject> {
         this.tableId = tableId
         this.writeClient = null
         this.writer = null
+        this.streamType = streamType
     }
 
     async init() {
         const destinationTable = `projects/${this.projectId}/datasets/${this.datasetId}/tables/${this.tableId}`;
-        const streamType = managedwriter.CommittedStream ;
         const writeClient = new WriterClient({ projectId: this.projectId,  keyFilename: config.GCP_KEY });
         this.writeClient = writeClient
         const bigquery = new BigQuery({ projectId: this.projectId,  keyFilename: config.GCP_KEY })
@@ -46,12 +49,24 @@ export class BQWriter<T extends JSONObject> {
             const protoDescriptor = adapt.convertStorageSchemaToProto2Descriptor(
                 storageSchema, 'root'
             )
-            const streamId = await writeClient.createWriteStream({
-                streamType, destinationTable
-            })
-            const connection = await writeClient.createStreamConnection({
-                streamId
-            })
+            const connection: StreamConnection = await ( async ()=>{
+                switch (this.streamType) {
+                    case managedwriter.DefaultStream:
+                        return await writeClient.createStreamConnection({
+                            streamId: managedwriter.DefaultStream,
+                            destinationTable
+                        })
+                    case managedwriter.CommittedStream:
+                        const streamId = await writeClient.createWriteStream({
+                            streamType: managedwriter.CommittedStream, destinationTable
+                        })
+                        return await writeClient.createStreamConnection({
+                            streamId,
+                            destinationTable
+                        })
+                }
+            })()
+
             this.writer = new JSONWriter({
                 connection,
                 protoDescriptor
