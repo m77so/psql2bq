@@ -27,28 +27,42 @@ async function copyPsql2Bq(
         destination.tableId
     )
     try {
-        await client.connect();
         console.log([schemaName, tableName])
-        const pool = new Pool()
-        pool.connect((err, c, done) => {
-            const query = new QueryStream(`SELECT * FROM "${schemaName}"."${tableName}"`)
-            const stream = c.query(query)
-            stream.on('end', done)
-            stream.on('data', (row)=>{
-
-            })
-        })
-        const res = await client.query(new QueryStream(query))
 
         await bqw.init()
-        await bqw.appendRows(
-            bqw.fixPgRows(res.rows)
-        )
+
+        const query = new QueryStream(`SELECT * FROM "${schemaName}"."${tableName}"`)
+        console.log('z')
+        return new Promise((resolve, reject)=>{
+        console.log('z1')
+
+            const stream = client.query(query)
+            console.log('r32')
+            stream.on('end', async ()=>{
+                console.log('xx')
+                await bqw.appendRows([])
+                console.log('bye')
+                await bqw.close()
+                resolve(bqw.offsetValue)
+            })
+            stream.on('error',(err)=>{
+                console.log(err)
+                reject(err)
+            })
+            stream.on('data', async (row)=>{
+                console.log('t')
+
+                bqw.appendRow(bqw.fixPgRow(row))
+                if (bqw.pending_rows.length > 1023 && bqw.pending_rows.length % 128 === 0){
+                    await bqw.appendRows([])
+                }
+            })
+        })
+
     } catch (err) {
         console.error(err);
     } finally {
-        await client.end();
-        await bqw.close()
+        
     }
 }
 
@@ -58,19 +72,20 @@ async function copyPsql2Bq(
     const srcDataset = process.argv[2]
     const destDataset = process.argv[3]
 
-    // const tables = await getAllTableInPsqlSchema(srcDataset)
+    const tables = await getAllTableInPsqlSchema(srcDataset)
 
-    // for (let table of tables) {
-    //     console.log(table)
-    //     await copyPsql2Bq(srcDataset, table, {
-    //         projectId: config.BigQuery.projectId,
-    //         datasetId: destDataset,
-    //         tableId: table
-    //     })
-    // }
-    await copyPsql2Bq(srcDataset, table, {
-        projectId: config.BigQuery.projectId,
-        datasetId: destDataset,
-        tableId: table
-    })
+    for (let table of tables) {
+        console.log(table)
+        await copyPsql2Bq(srcDataset, table, {
+            projectId: config.BigQuery.projectId,
+            datasetId: destDataset,
+            tableId: table
+        })
+        //break
+    }
+    // await copyPsql2Bq(srcDataset, table, {
+    //     projectId: config.BigQuery.projectId,
+    //     datasetId: destDataset,
+    //     tableId: table
+    // })
 })()

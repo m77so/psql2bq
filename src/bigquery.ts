@@ -29,6 +29,7 @@ export class BQWriter {
     streamType : StreamType
     isCdc : boolean
     schema : TableMetadataObject[]
+    pending_rows: JSONObject[]
     constructor(
         projectId: string,
         datasetId: string,
@@ -48,10 +49,12 @@ export class BQWriter {
             this.streamType = managedwriter.DefaultStream
         }
         this.schema = []
+        this.pending_rows = []
     }
 
     async init() {
         const destinationTable = `projects/${this.projectId}/datasets/${this.datasetId}/tables/${this.tableId}`;
+        console.log(destinationTable)
         const writeClient = new WriterClient({ projectId: this.projectId,  keyFilename: config.GCP_KEY });
         this.writeClient = writeClient
         const bigquery = new BigQuery({ projectId: this.projectId,  keyFilename: config.GCP_KEY })
@@ -102,7 +105,7 @@ export class BQWriter {
     }
 
 // pgのresponseを取り込める形式に変換する
-    fixPgRows(rows: PgJSONObject[]): JSONObject[] {
+    fixPgRow(row: PgJSONObject): JSONObject {
         const fixTimestamp = (value: PgJSONValue): JSONValue => {
             if (value instanceof Date) {
                 return (value as Date).getTime() * 1000
@@ -112,7 +115,7 @@ export class BQWriter {
                 return null
             }
         }
-        const jsonFixedRows:  JSONObject[] = rows.map(row=>{
+        const jsonFixedRow:  JSONObject = (row=>{
             let res: JSONObject = {}
             this.schema.forEach(s => {
                 const k = s.name
@@ -133,15 +136,26 @@ export class BQWriter {
             })
 
             return res
-        })
-        return jsonFixedRows
+        })(row)
+        return jsonFixedRow
     }
 
     appendRow(row: JSONObject) {
-        
+        this.pending_rows.push(row)
     }
 
     async appendRows(rows: JSONObject[]) {
+        console.log("flush")
+        let appendrows = this.pending_rows.splice(0, this.pending_rows.length)
+        if (rows.length === 0 && appendrows.length === 0) {
+            return
+        } else if (rows.length > 0 && appendrows.length === 0) {
+            appendrows = rows
+        } else if (rows.length > 0 && appendrows.length > 0) {
+            appendrows = appendrows.concat(rows)
+        } 
+        console.log("flush2", appendrows.length)
+
         const pendingWrites: PendingWrite[] = []
         if (this.writer === null) throw Error('writer is null')
        
@@ -150,6 +164,7 @@ export class BQWriter {
         const results = await Promise.all(
             pendingWrites.map(pw => pw.getResult())
         )
+        console.log(results)
         this.offsetValue += rows.length
     }
 
