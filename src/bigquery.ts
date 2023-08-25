@@ -145,7 +145,6 @@ export class BQWriter {
     }
 
     async appendRows(rows: JSONObject[]) {
-        console.log("flush")
         let appendrows = this.pending_rows.splice(0, this.pending_rows.length)
         if (rows.length === 0 && appendrows.length === 0) {
             return
@@ -159,7 +158,7 @@ export class BQWriter {
         const pendingWrites: PendingWrite[] = []
         if (this.writer === null) throw Error('writer is null')
        
-        let pw = this.writer.appendRows(rows, this.offsetValue)
+        let pw = this.writer.appendRows(appendrows, this.offsetValue)
         pendingWrites.push(pw)
         const results = await Promise.all(
             pendingWrites.map(pw => pw.getResult())
