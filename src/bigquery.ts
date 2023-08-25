@@ -153,7 +153,7 @@ export class BQWriter {
         } else if (rows.length > 0 && appendrows.length > 0) {
             appendrows = appendrows.concat(rows)
         } 
-        console.log("flush2", appendrows.length)
+        console.log("flush2", this.tableId, appendrows.length, this.offsetValue)
 
         const pendingWrites: PendingWrite[] = []
         if (this.writer === null) throw Error('writer is null')
@@ -163,8 +163,7 @@ export class BQWriter {
         const results = await Promise.all(
             pendingWrites.map(pw => pw.getResult())
         )
-        console.log(results)
-        this.offsetValue += rows.length
+        this.offsetValue += appendrows.length
     }
 
     close() {

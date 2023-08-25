@@ -21,6 +21,7 @@ async function copyPsql2Bq(
         password: config.db.password,
         port: config.db.port,
     })
+    await client.connect()
     const bqw = new BQWriter(
         destination.projectId,
         destination.datasetId,
@@ -31,44 +32,36 @@ async function copyPsql2Bq(
 
         await bqw.init()
 
+
         const query = new QueryStream(`SELECT * FROM "${schemaName}"."${tableName}"`)
-        console.log('z')
-        return new Promise((resolve, reject)=>{
-        console.log('z1')
 
+        return new Promise((resolve, reject) => {
             const stream = client.query(query)
-            console.log('r32')
-            stream.on('end', async ()=>{
-                console.log('xx')
+            stream.on('end', async () => {
                 await bqw.appendRows([])
-                console.log('bye')
-                await bqw.close()
-                resolve(bqw.offsetValue)
-            })
-            stream.on('error',(err)=>{
-                console.log(err)
-                reject(err)
-            })
-            stream.on('data', async (row)=>{
-                console.log('t')
+                //await bqw.close()
+                resolve(1)
 
+            })
+            stream.on('data', async (row) => {
                 bqw.appendRow(bqw.fixPgRow(row))
-                if (bqw.pending_rows.length > 1023 && bqw.pending_rows.length % 128 === 0){
+                if (bqw.pending_rows.length > 1023 && bqw.pending_rows.length % 128 === 0) {
                     await bqw.appendRows([])
                 }
             })
         })
-
     } catch (err) {
+        console.log(12345)
         console.error(err);
     } finally {
-        
+
     }
+    console.log(12341)
 }
 
 
 
-(async ()=>{
+(async () => {
     const srcDataset = process.argv[2]
     const destDataset = process.argv[3]
 
@@ -76,12 +69,13 @@ async function copyPsql2Bq(
 
     for (let table of tables) {
         console.log(table)
-        await copyPsql2Bq(srcDataset, table, {
+        const res = await copyPsql2Bq(srcDataset, table, {
             projectId: config.BigQuery.projectId,
             datasetId: destDataset,
             tableId: table
         })
-        //break
+        console.log(res)
+
     }
     // await copyPsql2Bq(srcDataset, table, {
     //     projectId: config.BigQuery.projectId,
